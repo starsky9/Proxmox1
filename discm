@@ -1,0 +1,131 @@
+
+#!/bin/bash
+# ------------------------------------------------------------------
+# [Author] Disk space monitor
+#          Monitor disk space used and send 
+#          email if more than 95%
+# ------------------------------------------------------------------
+
+VERSION=0.1.0
+NAME=$0
+SUBJECT="disk_space_monitor"
+usage() {
+    cat <<EOF
+NAME
+       $NAME - check disk space and send an email when it is over the level
+
+SYNOPSIS
+       $NAME [OPTION] RECIPIENT [LEVEL] [DEVICE]
+
+DESCRIPTION
+    Mandatory args:
+        RECIPIENT 
+            recipient of the email
+
+    Optional:
+        DEVICE
+            device (default=/)
+        -h
+            display this help and exit
+        LEVEL 
+            Treshold level for sending an email (default=95)
+        -v
+            output version information and exit
+
+EOF
+}
+
+# --- Options processing -------------------------------------------
+if [ $# == 0 ] ; then
+    usage
+    exit 1;
+fi
+
+while getopts "vh" optname
+  do
+    case "$optname" in
+      "v")
+        echo "Version $VERSION"
+        exit 0;
+        ;;
+      "h")
+        usage
+        exit 0;
+        ;;
+      "?")
+        echo "Unknown option $OPTARG"
+        exit 0;
+        ;;
+      *)
+        echo "Unknown error while processing options"
+        exit 0;
+        ;;
+    esac
+  done
+
+shift $(($OPTIND - 1))
+
+RECIPIENT=$1
+LEVEL=$2
+DEVICE=$3
+
+# Check arguments
+
+if [ $# -lt 1 ] ; then
+    echo "Recipient is required."
+    usage
+    exit 1;
+fi
+
+if [ $# -lt 2 ] ; then
+    LEVEL=95
+fi
+
+if [ $# -lt 3 ] ; then
+    DEVICE="/"
+fi
+
+HOST=$(hostname -s)
+DATE=$(date)
+
+# --- Body --------------------------------------------------------
+
+# Check if device is valid
+if [ ! -d "$DEVICE" ] && [ ! -b "$DEVICE" ]
+then
+  echo "$DEVICE is not a device."
+  exit 1;
+fi
+
+# Get disk usage percent
+USED_PCENT=$(df --output=pcent $DEVICE | tr -d '\n\ Use%')
+
+# Check usage against level
+if [ $USED_PCENT -lt $LEVEL ]; then
+    exit 0;
+fi
+
+# Check if there is a lock file and exit without sending an email
+LOCK_FILE=/tmp/$SUBJECT.lock
+if [ -f "$LOCK_FILE" ]; then
+   exit 0;
+fi
+
+# Send email notification 
+echo "
+$DEVICE is $USED_PCENT% full
+
+Date: $DATE
+HOST: $HOST
+CHECK LEVEL: $LEVEL%
+
+---
+More information:
+$(df -hT)
+" | mail -s "disk usage report" $RECIPIENT -aFrom:noreply@example.com
+
+# Create lock file after sending the email
+touch $LOCK_FILE
+
+# The End !
+exit 0;
